@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<!-- Viewfinder Capture — browser puzzle game. Dynamic photo capture via real CSG. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>VIEWFINDER — capture</title>
+<style>
+  :root { --ink:#f4f1ea; --dim:rgba(244,241,234,.55); --accent:#3fd9c4; --warn:#ff6b6b; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html,body { width:100%; height:100%; overflow:hidden; background:#0e0e16;
+    font-family:"Avenir Next","Helvetica Neue",Arial,sans-serif; color:var(--ink);
+    -webkit-user-select:none; user-select:none; }
+  #app { position:fixed; inset:0; }
+  canvas { display:block; }
+
+  .layer { position:absolute; inset:0; pointer-events:none; }
+
+  /* crosshair */
+  #crosshair { position:absolute; left:50%; top:50%; width:14px; height:14px;
+    transform:translate(-50%,-50%); opacity:.85; }
+  #crosshair::before, #crosshair::after { content:""; position:absolute; background:var(--ink); }
+  #crosshair::before { left:50%; top:0; width:1.5px; height:100%; transform:translateX(-50%); }
+  #crosshair::after  { top:50%; left:0; height:1.5px; width:100%; transform:translateY(-50%); }
+
+  /* photo frame shown in capture mode */
+  #frame { position:absolute; left:50%; top:50%; width:52vmin; height:38vmin;
+    transform:translate(-50%,-50%); border:1.5px solid rgba(244,241,234,.5);
+    border-radius:4px; transition:opacity .18s; }
+  #frame .corner { position:absolute; width:18px; height:18px; border:2.5px solid var(--ink); }
+  #frame .c0 { left:-2px; top:-2px; border-right:none; border-bottom:none; }
+  #frame .c1 { right:-2px; top:-2px; border-left:none; border-bottom:none; }
+  #frame .c2 { left:-2px; bottom:-2px; border-right:none; border-top:none; }
+  #frame .c3 { right:-2px; bottom:-2px; border-left:none; border-top:none; }
+
+  #modechip { position:absolute; top:22px; left:50%; transform:translateX(-50%);
+    font-size:11px; letter-spacing:.28em; color:var(--dim); text-transform:uppercase; }
+  #modechip b { color:var(--ink); font-weight:600; }
+
+  #prompt { position:absolute; bottom:17%; left:50%; transform:translateX(-50%);
+    font-size:14px; letter-spacing:.06em; color:var(--ink); text-align:center;
+    text-shadow:0 1px 12px rgba(0,0,0,.5); opacity:0; transition:opacity .35s; max-width:70%; }
+
+  /* photo inventory */
+  #slots { position:absolute; bottom:26px; left:50%; transform:translateX(-50%);
+    display:flex; gap:10px; }
+  .slot { width:74px; height:56px; border:1.5px solid rgba(244,241,234,.3); border-radius:5px;
+    background:rgba(14,14,22,.45); position:relative; transition:border-color .15s, transform .15s; }
+  .slot.filled { border-color:rgba(244,241,234,.75); }
+  .slot.active { border-color:var(--accent); transform:translateY(-5px); }
+  .slot .key { position:absolute; top:3px; left:6px; font-size:9px; color:var(--dim); }
+  .slot canvas { width:100%; height:100%; border-radius:4px; }
+  .slot .sky { position:absolute; inset:0; display:flex; align-items:center; justify-content:center;
+    font-size:9px; letter-spacing:.2em; color:var(--accent); }
+
+  #hint { position:absolute; bottom:96px; left:50%; transform:translateX(-50%);
+    font-size:12px; color:var(--warn); letter-spacing:.08em; opacity:0; transition:opacity .3s; }
+
+  #fps { position:absolute; top:10px; right:12px; font-size:10px; color:var(--dim);
+    font-family:monospace; display:none; white-space:pre; text-align:right; }
+
+  /* flash on shutter / placement */
+  #flash { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; }
+
+  /* full-screen overlays */
+  .overlay { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; background:rgba(10,10,18,.82); backdrop-filter:blur(6px);
+    pointer-events:auto; transition:opacity .4s; }
+  .overlay.hidden { opacity:0; pointer-events:none; }
+  .overlay h1 { font-size:34px; font-weight:300; letter-spacing:.42em; margin-bottom:6px;
+    text-indent:.42em; }
+  .overlay h2 { font-size:12px; font-weight:400; letter-spacing:.3em; color:var(--dim);
+    margin-bottom:44px; text-transform:uppercase; }
+  .overlay .mood { font-size:15px; font-style:italic; color:var(--dim); margin-bottom:40px;
+    text-align:center; line-height:1.8; max-width:520px; }
+  .btn { pointer-events:auto; cursor:pointer; border:1px solid rgba(244,241,234,.4);
+    background:none; color:var(--ink); font:inherit; font-size:13px; letter-spacing:.24em;
+    padding:13px 38px; border-radius:3px; text-transform:uppercase; transition:all .2s;
+    margin:5px; }
+  .btn:hover { border-color:var(--accent); color:var(--accent); }
+  .btn[disabled] { opacity:.25; cursor:default; }
+  .btn[disabled]:hover { border-color:rgba(244,241,234,.4); color:var(--ink); }
+  #levelgrid { display:flex; gap:12px; margin-bottom:34px; flex-wrap:wrap; justify-content:center; }
+  #levelgrid .btn { min-width:74px; padding:16px 0 12px; }
+  #levelgrid .btn small { display:block; font-size:9px; letter-spacing:.14em; margin-top:6px;
+    color:var(--dim); }
+
+  #help { font-size:12.5px; line-height:2.05; color:var(--dim); letter-spacing:.05em; }
+  #help b { color:var(--ink); font-weight:600; display:inline-block; min-width:120px; }
+  #help-note { margin-top:26px; font-size:11px; color:var(--dim); letter-spacing:.2em; }
+
+  #resume-overlay .mood { margin-bottom:8px; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.173.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.173.0/examples/jsm/",
+    "three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.9.3/build/index.module.js",
+    "three-bvh-csg": "https://cdn.jsdelivr.net/npm/three-bvh-csg@0.0.16/build/index.module.js"
+  }
+}
+</script>
+</head>
+<body>
+<div id="app"></div>
+
+<div class="layer" id="hud" style="display:none">
+  <div id="frame"><div class="corner c0"></div><div class="corner c1"></div>
+    <div class="corner c2"></div><div class="corner c3"></div></div>
+  <div id="crosshair"></div>
+  <div id="modechip"></div>
+  <div id="prompt"></div>
+  <div id="hint"></div>
+  <div id="slots"></div>
+  <div id="fps"></div>
+</div>
+<div class="layer" id="flash"></div>
+
+<div class="overlay hidden" id="resume-overlay">
+  <div class="mood">paused</div>
+  <button class="btn" id="btn-resume">Click to resume</button>
+  <div style="height:14px"></div>
+  <button class="btn" id="btn-help2">Controls</button>
+  <button class="btn" id="btn-restart">Reset level</button>
+  <button class="btn" id="btn-quit">Menu</button>
+</div>
+
+<div class="overlay hidden" id="help-overlay">
+  <div id="help"></div>
+  <div id="help-note">H / ESC — CLOSE</div>
+</div>
+
+<div class="overlay hidden" id="transition-overlay">
+  <div class="mood" id="transition-text"></div>
+</div>
+
+<div class="overlay" id="menu-overlay">
+  <h1>VIEWFINDER</h1>
+  <h2>capture</h2>
+  <div class="mood" id="menu-mood">some places only exist<br>once you take their picture</div>
+  <div id="levelgrid"></div>
+  <button class="btn" id="btn-start">Begin</button>
+</div>
+
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>

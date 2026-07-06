@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<!-- P0 smoke test: validates the pinned CDN trio (three / three-mesh-bvh / three-bvh-csg)
+     and the fixed-topology hexahedron cutter template before any system code is written. -->
+<html>
+<head>
+<meta charset="utf-8">
+<title>viewfinder-capture P0 smoke test</title>
+<style>
+  body { margin:0; background:#1a1a2e; color:#eee; font:13px/1.5 monospace; }
+  #results { position:absolute; top:8px; left:8px; white-space:pre-wrap; z-index:10; }
+  .pass { color:#7fdc9a; } .fail { color:#ff6b6b; }
+  canvas { display:block; }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.173.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.173.0/examples/jsm/",
+    "three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.9.3/build/index.module.js",
+    "three-bvh-csg": "https://cdn.jsdelivr.net/npm/three-bvh-csg@0.0.16/build/index.module.js"
+  }
+}
+</script>
+</head>
+<body>
+<pre id="results">loading modules...</pre>
+<script type="module">
+const out = document.getElementById('results');
+const lines = [];
+let failures = 0;
+function report(ok, msg) {
+  lines.push(`${ok ? 'PASS' : 'FAIL'} ${msg}`);
+  if (!ok) failures++;
+  out.innerHTML = lines.map(l =>
+    `<span class="${l.startsWith('PASS') ? 'pass' : 'fail'}">${l}</span>`).join('\n');
+  console.log(ok ? '[PASS]' : '[FAIL]', msg);
+}
+
+try {
+  const THREE = await import('three');
+  const BVH = await import('three-mesh-bvh');
+  const CSG = await import('three-bvh-csg');
+  report(true, `imports resolved — three r${THREE.REVISION}, mesh-bvh 0.9.3, bvh-csg 0.0.16`);
+
+  const { Brush, Evaluator, INTERSECTION, SUBTRACTION, ADDITION } = CSG;
+  const { MeshBVH, StaticGeometryGenerator, computeBoundsTree, acceleratedRaycast } = BVH;
+  report(!!(Brush && Evaluator && INTERSECTION !== undefined && SUBTRACTION !== undefined
+    && ADDITION !== undefined && MeshBVH && StaticGeometryGenerator && computeBoundsTree
+    && acceleratedRaycast), 'required exports present');
+
+  // --- fixed-topology hexahedron template ---------------------------------
+  // Corners: 0-3 = quad at z=-1 in order (-1,-1)(+1,-1)(+1,+1)(-1,+1), 4-7 same at z=+1.
+  // 12 triangles, outward winding for the canonical cube. Never re-triangulated:
+  // cutters are built by moving these 8 vertices only.
+  const HEX_INDICES = [
+    0,3,2, 0,2,1,  4,5,6, 4,6,7,  0,4,7, 0,7,3,
+    1,2,6, 1,6,5,  0,1,5, 0,5,4,  3,7,6, 3,6,2
+  ];
+  function hexGeometry(corners /* array of 8 THREE.Vector3 */) {
+    const pos = new Float32Array(24);
+    for (let i = 0; i < 8; i++) corners[i].toArray(pos, i * 3);
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    g.setIndex(HEX_INDICES.slice());
+    g.computeVertexNormals();
+    return g;
+  }
+  function signedVolume(geo) {
+    const p = geo.attributes.position, idx = geo.index.array;
+    const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+    let v = 0;
+    for (let i = 0; i < idx.length; i += 3) {
+      a.fromBufferAttribute(p, idx[i]); b.fromBufferAttribute(p, idx[i+1]); c.fromBufferAttribute(p, idx[i+2]);
+      v += a.dot(b.clone().cross(c));
+    }
+    return v / 6;
+  }
+  // closed + consistently oriented: every directed edge appears exactly once
+  function manifoldCheck(geo) {
+    const idx = geo.index.array, edges = new Map();
+    for (let i = 0; i < idx.length; i += 3) {
+      for (const [s, e] of [[idx[i],idx[i+1]],[idx[i+1],idx[i+2]],[idx[i+2],idx[i]]]) {
+        const k = s + '_' + e;
+        if (edges.has(k)) return false;           // duplicate directed edge
+        edges.set(k, true);
+      }
+    }
+    for (const k of edges.keys()) {
+      const [s, e] = k.split('_');
+      if (!edges.has(e + '_' + s)) return false;  // boundary edge (not closed)
+    }
+    return true;
+  }
+
+  // template sanity on the canonical cube
+  const cubeCorners = [
+    [-1,-1,-1],[1,-1,-1],[1,1,-1],[-1,1,-1],
+    [-1,-1, 1],[1,-1, 1],[1,1, 1],[-1,1, 1]
+  ].map(a => new THREE.Vector3(...a));
+  const cubeGeo = hexGeometry(cubeCorners);
+  report(manifoldCheck(cubeGeo), 'template cube: closed manifold, consistent winding');
+  report(Math.abs(signedVolume(cubeGeo) - 8) < 1e-6,
+    `template cube: signed volume = ${signedVolume(cubeGeo).toFixed(4)} (expect +8)`);
+
+  // frustum cutter: unproject NDC corners of a real perspective camera.
+  // KEY QUESTION: does NDC->world flip orientation (negative volume)?
+  const cam = new THREE.PerspectiveCamera(60, 16/9, 0.5, 20);
+  cam.position.set(3, 2, 5); cam.lookAt(0, 0, 0); cam.updateMatrixWorld();
+  const NDC_XY = [[-1,-1],[1,-1],[1,1],[-1,1]];
+  const frCorners = [];
+  for (const z of [-1, 1]) for (const [x, y] of NDC_XY)
+    frCorners.push(new THREE.Vector3(x, y, z).unproject(cam));
+  const frGeo = hexGeometry(frCorners);
+  const frVol = signedVolume(frGeo);
+  report(manifoldCheck(frGeo), 'frustum cutter: closed manifold, consistent winding');
+  report(true, `frustum cutter signed volume = ${frVol.toFixed(3)} (${frVol > 0 ? 'outward as-is' : 'NEEDS index flip after unproject'})`);
+
+  // --- CSG smoke: INTERSECTION of two overlapping boxes -------------------
+  const evaluator = new Evaluator();
+  evaluator.useGroups = true;
+  const matA = new THREE.MeshStandardMaterial({ color: 0xf2c9a0 });
+  const matCut = new THREE.MeshStandardMaterial({ color: 0x7fb8d4 });
+  const brushA = new Brush(new THREE.BoxGeometry(2, 2, 2), matA);
+  const brushB = new Brush(new THREE.BoxGeometry(2, 2, 2), matCut);
+  brushB.position.set(1, 1, 1);
+  brushA.updateMatrixWorld(); brushB.updateMatrixWorld();
+
+  let interResult = null;
+  try {
+    interResult = evaluator.evaluate(brushA, brushB, INTERSECTION);
+    const tris = interResult.geometry.index
+      ? interResult.geometry.index.count / 3
+      : interResult.geometry.attributes.position.count / 3;
+    report(tris > 4 && tris < 1000, `box INTERSECTION -> ${tris} triangles`);
+    report(true, `result groups: ${interResult.geometry.groups.length}, material is array: ${Array.isArray(interResult.material)} (len ${Array.isArray(interResult.material) ? interResult.material.length : 1})`);
+    const bvh = new MeshBVH(interResult.geometry);
+    report(!!bvh, 'MeshBVH built from CSG result');
+  } catch (e) { report(false, `box INTERSECTION threw: ${e.message}`); }
+
+  // --- CSG with the frustum cutter (manifold template) --------------------
+  try {
+    // flip indices if unprojection inverted orientation
+    let cutGeo = frGeo;
+    if (frVol < 0) {
+      cutGeo = frGeo.clone();
+      const ix = cutGeo.index.array;
+      for (let i = 0; i < ix.length; i += 3) { const t = ix[i+1]; ix[i+1] = ix[i+2]; ix[i+2] = t; }
+      cutGeo.computeVertexNormals();
+      report(manifoldCheck(cutGeo) && signedVolume(cutGeo) > 0, 'frustum cutter flipped -> outward + manifold');
+    }
+    const target = new Brush(new THREE.BoxGeometry(3, 3, 3), matA);
+    target.updateMatrixWorld();
+    const cutter = new Brush(cutGeo, matCut);
+    cutter.updateMatrixWorld();
+    const res = evaluator.evaluate(target, cutter, INTERSECTION);
+    const tris = res.geometry.index ? res.geometry.index.count / 3 : res.geometry.attributes.position.count / 3;
+    report(tris > 0, `frustum-cutter INTERSECTION -> ${tris} triangles`);
+  } catch (e) { report(false, `frustum-cutter INTERSECTION threw: ${e.message}`); }
+
+  // --- SUBTRACTION smoke (L4 depends on it) --------------------------------
+  try {
+    const wall = new Brush(new THREE.BoxGeometry(4, 3, 0.4), matA);
+    const hole = new Brush(new THREE.BoxGeometry(1, 1, 2), matCut);
+    wall.updateMatrixWorld(); hole.updateMatrixWorld();
+    const res = evaluator.evaluate(wall, hole, SUBTRACTION);
+    const tris = res.geometry.index ? res.geometry.index.count / 3 : res.geometry.attributes.position.count / 3;
+    report(tris > 10, `wall SUBTRACTION -> ${tris} triangles`);
+  } catch (e) { report(false, `SUBTRACTION threw: ${e.message}`); }
+
+  // --- timing probe --------------------------------------------------------
+  try {
+    const t0 = performance.now();
+    for (let i = 0; i < 5; i++) evaluator.evaluate(brushA, brushB, INTERSECTION);
+    report(true, `5x box INTERSECTION took ${(performance.now() - t0).toFixed(1)} ms total`);
+  } catch (e) { report(false, `timing probe threw: ${e.message}`); }
+
+  // --- render the intersection result so a screenshot proves visual output -
+  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setSize(innerWidth, innerHeight);
+  document.body.appendChild(renderer.domElement);
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x1a1a2e);
+  const cam2 = new THREE.PerspectiveCamera(50, innerWidth/innerHeight, 0.1, 100);
+  cam2.position.set(3, 3, 5); cam2.lookAt(0, 0, 0);
+  scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+  const dir = new THREE.DirectionalLight(0xffffff, 1.4); dir.position.set(3, 5, 2);
+  scene.add(dir);
+  if (interResult) scene.add(interResult);
+  renderer.setAnimationLoop(() => {
+    if (interResult) interResult.rotation.y += 0.01;
+    renderer.render(scene, cam2);
+  });
+
+  report(true, `SMOKE TEST DONE — ${failures === 0 ? 'ALL GREEN' : failures + ' FAILURES'}`);
+  window.__smokeResult = { failures, lines };
+} catch (e) {
+  report(false, `top-level: ${e.message}\n${e.stack}`);
+  window.__smokeResult = { failures: failures + 1, lines };
+}
+</script>
+</body>
+</html>
