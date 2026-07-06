@@ -38,8 +38,8 @@ export class World {
     this.scene.background = new THREE.Color(def.sky?.bottom ?? 0xbfd9e8);
     this.scene.fog = new THREE.Fog(def.sky?.fog ?? 0xc4dce8, 40, 170);
 
-    const hemi = new THREE.HemisphereLight(def.sky?.top ?? 0xdfeaf2, 0x8a8070, 0.85);
-    const sun = new THREE.DirectionalLight(0xfff2e0, 1.6);
+    const hemi = new THREE.HemisphereLight(def.sky?.top ?? 0xdfeaf2, 0xa89a88, 1.25);
+    const sun = new THREE.DirectionalLight(0xfff2e0, 1.7);
     sun.position.set(18, 30, 12);
     sun.castShadow = true;
     sun.shadow.mapSize.set(1024, 1024);

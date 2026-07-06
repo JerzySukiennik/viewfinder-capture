@@ -8,7 +8,7 @@ export default {
     intro: 'the camera remembers\nwhat the world forgot to build',
     outro: 'one photograph, one bridge.\nit wants more angles.',
   },
-  spawn: { pos: [-2, 0.1, 15], yaw: Math.PI },
+  spawn: { pos: [-2, 0.1, 15], yaw: 0 },
   sky: { top: '#dfeaf2', bottom: '#bfd9e8', fog: '#c4dce8' },
   static: [
     // main island (spawn side)

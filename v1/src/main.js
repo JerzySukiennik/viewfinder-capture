@@ -19,6 +19,16 @@ import { KEYS } from './config.js';
 
 const $ = id => document.getElementById(id);
 
+// WebGL2 is required by three r173 — fail with a readable message, not a black screen
+const probe = document.createElement('canvas');
+if (!probe.getContext('webgl2')) {
+  document.body.innerHTML =
+    '<div style="display:flex;height:100vh;align-items:center;justify-content:center;' +
+    'color:#f4f1ea;font-family:sans-serif;letter-spacing:.15em;text-align:center">' +
+    'THIS DREAM NEEDS WEBGL2<br>please use a current Chrome, Safari or Firefox</div>';
+  throw new Error('WebGL2 unavailable');
+}
+
 const renderer = new Renderer($('app'));
 const { scene, camera } = renderer;
 scene.add(camera);
@@ -339,7 +349,9 @@ setState('menu');
 // ---------------------------------------------------------------- debug / QA API
 
 window.__vf = {
-  version: 'v1',
+  version: 'v1.0.2',
+  get yaw() { return player.yaw; },
+  get pitch() { return player.pitch; },
   get state() { return state; },
   levels: LEVELS.map(l => l.name),
   loadLevel(i) { startLevel(i); },

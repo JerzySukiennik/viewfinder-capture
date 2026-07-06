@@ -60,20 +60,20 @@ export const BUDGET = {
 };
 
 export const PALETTE = {
-  sky:        0xbfd9e8,
-  skyTop:     0x8fb8d8,
-  fog:        0xc4dcE8,
-  floor:      0xe8e0d0,
-  wall:       0xd9cfc0,
-  wallDark:   0xb8a898,
-  accentWall: 0xc9a6a0,
-  capturable: 0xf0b880,     // ONE color game-wide: "this can be photographed"
-  crossCut:   0xfff2dc,     // cross-section cap — pale cut-paper
-  green:      0x9dc5a0,
+  sky:        0xa8cfe8,
+  skyTop:     0xe8f2fa,
+  fog:        0xbcd8ea,
+  floor:      0xf4ecda,
+  wall:       0xe8dcc8,
+  wallDark:   0xb98d76,
+  accentWall: 0xdf9a84,
+  capturable: 0xf5a35c,     // ONE color game-wide: "this can be photographed"
+  crossCut:   0xfff4de,     // cross-section cap — pale cut-paper
+  green:      0x9ecf9b,
   teleport:   0x3fd9c4,
-  teleportOff:0x3a4448,
+  teleportOff:0x46545a,
   battery:    0xffd166,
-  socket:     0x8895a8,
+  socket:     0x8fa0b8,
   ghostOk:    0x3fd9c4,
   ghostBad:   0xff6b6b,
 };
