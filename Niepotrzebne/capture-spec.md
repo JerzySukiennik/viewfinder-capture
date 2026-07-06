@@ -107,6 +107,9 @@ Ours (per prompt, depth-reprojection explicitly rejected):
   CSG degradation and infinite duplication.
 - Undo/reset MUST dispose: geometry, per-instance BVH, ghost clones, thumbnail RT contents.
   Brush caches (halfEdges/boundsTree) live on geometry — disposeCacheData on level unload.
+- NO OCCLUSION TEST (deliberate simplification): the capture volume is a box — a capturable
+  behind a thin wall still gets captured if inside the box. Levels must make this either
+  irrelevant (nothing capturable hidden near sightlines) or a deliberate secret.
 
 ## FPS regimes (contract for adversaries)
 
