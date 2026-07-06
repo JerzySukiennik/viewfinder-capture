@@ -349,7 +349,11 @@ setState('menu');
 // ---------------------------------------------------------------- debug / QA API
 
 window.__vf = {
-  version: 'v1.0.2',
+  version: 'v1.0.5',
+  span() {                             // dev/QA: capture span probe at current aim
+    const hit = world.raycastFromCamera(camera, 40);
+    return hit ? { dist: +hit.distance.toFixed(2), span: world.capturableSpanAt(camera, hit.point) } : null;
+  },
   get yaw() { return player.yaw; },
   get pitch() { return player.pitch; },
   get state() { return state; },
@@ -412,6 +416,44 @@ window.__vf = {
       power.update(dt, player.position);
     }
     return __vf.pos();
+  },
+  rayProbe() {                         // what the crosshair ray hits right now
+    const hit = world.raycastFromCamera(camera, 1000);
+    return hit ? { dist: hit.distance, point: hit.point.toArray() } : null;
+  },
+  prefabInfo(slot) {
+    const p = inventory.get(slot);
+    if (!p) return null;
+    const s = p.boundsLocal.getSize(new THREE.Vector3());
+    return { id: p.id, empty: p.isEmpty, tris: p.triCount, size: s.toArray().map(v => +v.toFixed(2)) };
+  },
+  entries() {
+    return world.mutable.map(e => {
+      e.collGeo.computeBoundingBox();
+      const b = e.collGeo.boundingBox;
+      return { id: e.id, kind: e.kind, min: b.min.toArray().map(v => +v.toFixed(2)), max: b.max.toArray().map(v => +v.toFixed(2)) };
+    });
+  },
+  // QA helper: place the armed slot so the ghost center lands at (cx,cy,cz) using the
+  // REAL pipeline (aim at the point, scroll = target dist - ray base dist, settle applies)
+  aimPlace(slot, cx, cy, cz, rollSteps = 0, flip = false) {
+    const p = player.position;
+    const dx = cx - p.x, dy = cy - p.y, dz = cz - p.z;
+    player.yaw = Math.atan2(-dx, -dz);
+    player.pitch = Math.asin(dy / Math.hypot(dx, dy, dz));
+    player.syncCamera();
+    doArm(slot);
+    placement.rollSteps = rollSteps;
+    placement.flipped = flip;
+    placement.scrollOffset = 0;
+    placement.update();
+    const hit = world.raycastFromCamera(camera, 30);
+    const baseDist = hit ? hit.distance : 8;
+    placement.scrollOffset = Math.hypot(dx, dy, dz) - baseDist;
+    placement.update();
+    const res = placement.commit();
+    if (res.ok) undo.push(res.action);
+    return { ok: res.ok, reason: res.reason, ghostPos: placement.ghost?.position?.toArray() };
   },
 };
 

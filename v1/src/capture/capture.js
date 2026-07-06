@@ -53,8 +53,9 @@ export function takePhoto(world, camera) {
   const t0 = performance.now();
   const aim = world.raycastFromCamera(camera, CAPTURE.maxAimDist);
   const aimDist = aim ? aim.distance : PLACEMENT.defaultDist;
+  const span = aim ? world.capturableSpanAt(camera, aim.point) : null;
 
-  const cut = buildCutter(camera, aimDist);
+  const cut = buildCutter(camera, aimDist, span);
   if (!cut) return { ok: false, reason: 'cannot photograph here' };
   const { brush: cutterBrush, dims } = cut;
   cutterBrush.geometry.computeBoundingBox();

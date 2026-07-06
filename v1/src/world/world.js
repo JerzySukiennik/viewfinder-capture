@@ -149,6 +149,30 @@ export class World {
     return this.raycast(camera.position, _v, far);
   }
 
+  // if the aim point lies on a capturable, return its AABB span projected on the view
+  // ray (near/far distances from the camera) so the cutter can swallow the whole solid
+  capturableSpanAt(camera, point) {
+    camera.getWorldDirection(_v);
+    const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
+    const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+    for (const c of this.capturableEntries) {
+      if (!c.aabb.clone().expandByScalar(0.15).containsPoint(point)) continue;
+      let near = Infinity, far = -Infinity, maxR = 0, maxU = 0;
+      for (let i = 0; i < 8; i++) {
+        const corner = new THREE.Vector3(
+          i & 1 ? c.aabb.max.x : c.aabb.min.x,
+          i & 2 ? c.aabb.max.y : c.aabb.min.y,
+          i & 4 ? c.aabb.max.z : c.aabb.min.z).sub(camera.position);
+        near = Math.min(near, corner.dot(_v));
+        far = Math.max(far, corner.dot(_v));
+        maxR = Math.max(maxR, Math.abs(corner.dot(right)));
+        maxU = Math.max(maxU, Math.abs(corner.dot(up)));
+      }
+      return { near, far, maxR, maxU };
+    }
+    return null;
+  }
+
   addPrefabInstance(prefab, matrix) {
     const geo = prefab.geometry.clone();
     geo.applyMatrix4(matrix);

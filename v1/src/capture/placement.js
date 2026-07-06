@@ -99,7 +99,9 @@ export class PlacementController {
     this.captureBoxVis.visible = this.state === 'capture' && this.player.enabled;
     if (this.captureBoxVis.visible) {
       const aim = this.world.raycastFromCamera(this.camera, 40);
-      const dims = cutterDims(this.camera, aim ? aim.distance : PLACEMENT.defaultDist);
+      const span = aim ? this.world.capturableSpanAt(this.camera, aim.point) : null;
+      const dims = cutterDims(this.camera,
+        aim ? Math.min(aim.distance, PLACEMENT.maxDist) : PLACEMENT.defaultDist, span);
       this.captureBoxVis.position.set(0, 0, (dims.zNear + dims.zFar) / 2);
       this.captureBoxVis.scale.set(dims.halfW * 2, dims.halfH * 2, Math.abs(dims.zFar - dims.zNear));
     }
@@ -130,11 +132,15 @@ export class PlacementController {
       _ghostBox.expandByPoint(_corner);
     }
 
-    // settle onto ground when a surface is near below (solid photos only)
+    // settle onto ground when a surface is near below (solid photos only).
+    // tilted/flipped photos bed deeper into the floor so their low lip stays
+    // under the 0.35m auto-step (a 30-deg slab's edge lip is ~0.35 otherwise)
     if (!this.prefab.isEmpty) {
+      const tilted = (this.rollSteps % 24 !== 0) || this.flipped;
+      const embed = tilted ? 0.3 : PLACEMENT.floorEmbed;
       const halfBelow = -_ghostBox.min.y;
       const ground = this.world.raycast(_pos, _down, halfBelow + 1.4);
-      if (ground) _pos.y = ground.point.y + halfBelow - PLACEMENT.floorEmbed;
+      if (ground) _pos.y = ground.point.y + halfBelow - embed;
     }
 
     this.matrix.compose(_pos, _q, _one);

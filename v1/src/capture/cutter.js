@@ -82,17 +82,28 @@ function finalizeCutter(corners) {
   return brush;
 }
 
-export function cutterDims(camera, aimDist) {
-  const d = THREE.MathUtils.clamp(aimDist, CAPTURE.minAimDist, CAPTURE.maxAimDist);
+export function cutterDims(camera, aimDist, span = null) {
+  // aiming at a capturable: widen the aim distance so the frame swallows the whole
+  // solid (WYSIWYG — the live capture-box preview shows exactly this)
+  let dEff = aimDist;
+  if (span) dEff = Math.max(aimDist, (span.near + span.far) / 2);
+  const d = THREE.MathUtils.clamp(dEff, CAPTURE.minAimDist, CAPTURE.maxAimDist);
   const vFov = THREE.MathUtils.degToRad(camera.fov);
   // HUD frame is 52vmin x 38vmin: convert to fractions of the actual viewport
   const vmin = Math.min(innerWidth, innerHeight);
   const fracH = (0.38 * vmin) / innerHeight;
   const fracW = (0.52 * vmin) / innerWidth;
-  const halfH = Math.tan(vFov / 2) * d * fracH;
-  const halfW = Math.tan(vFov / 2) * camera.aspect * d * fracW;
-  const zNear = -Math.max(0.4, CAPTURE.nearFraction * d);
-  const zFar = -(d + CAPTURE.depthMargin(d));
+  let halfH = Math.tan(vFov / 2) * d * fracH;
+  let halfW = Math.tan(vFov / 2) * camera.aspect * d * fracW;
+  let zNear = -Math.max(0.4, CAPTURE.nearFraction * d);
+  let zFar = -(d + CAPTURE.depthMargin(d));
+  if (span) {
+    // swallow the whole aimed solid: widen laterally and in depth to its AABB
+    halfW = Math.max(halfW, span.maxR + 0.3);
+    halfH = Math.max(halfH, span.maxU + 0.3);
+    zNear = -Math.max(0.4, Math.min(-zNear, span.near - 0.3));
+    zFar = Math.min(zFar, -(span.far + 0.5));
+  }
   return { d, halfW, halfH, zNear, zFar };
 }
 
@@ -121,9 +132,9 @@ function buildFrustumCutterDims(camera, dims) {
   return finalizeCutter(corners);
 }
 
-export function buildCutter(camera, aimDist) {
+export function buildCutter(camera, aimDist, span = null) {
   camera.updateMatrixWorld();
-  const dims = cutterDims(camera, aimDist);
+  const dims = cutterDims(camera, aimDist, span);
   const brush = CAPTURE.frustumCutter
     ? buildFrustumCutterDims(camera, dims)
     : buildBoxCutterDims(camera, dims);
