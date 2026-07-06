@@ -388,6 +388,19 @@ window.__vf = {
     heapMB: performance.memory ? +(performance.memory.usedJSHeapSize / 1048576).toFixed(1) : null,
   }),
   unlockAll() { save.store({ unlocked: LEVELS.length, completed: [] }); renderMenu(); },
+  loadDef(def) {                       // dev/QA: run an ad-hoc level definition
+    LEVELS.push(def);
+    startLevel(LEVELS.length - 1);
+  },
+  popDef() { if (LEVELS.length > 1) LEVELS.pop(); },
+  step(dt = 1 / 60, n = 1) {           // dev/QA: deterministic ticks independent of rAF
+    for (let i = 0; i < n; i++) {
+      player.update(dt, input);
+      placement.update();
+      power.update(dt, player.position);
+    }
+    return __vf.pos();
+  },
 };
 
 console.log('[viewfinder-capture] booted,', LEVELS.length, 'level(s)');
